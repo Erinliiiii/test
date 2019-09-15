@@ -7,17 +7,21 @@ SELECT * FROM test;
 
 #2. Show the first, second and last transaction for every customer
 # Assumption: Transaction ID is ordered by time when transaction happened
-SELECT customer, transaction_id, month, year, spend,
-       (CASE WHEN row_num = 1 THEN 'first'
-			WHEN row_num = 2 THEN 'second'
-            ELSE 'last' END) AS `order`
-FROM
-(SELECT customer, 
+SELECT customer, 
        transaction_id, 
 	   month, 
        year, 
        spend,
-       ROW_NUMBER() OVER (PARTITION BY customer ORDER BY transaction_id) row_num
+       (CASE WHEN row_num = 1 THEN 'first'
+			 WHEN row_num = 2 THEN 'second'
+             ELSE 'last' END) AS `order`
+FROM
+(SELECT customer, 
+        transaction_id, 
+	    month, 
+        year, 
+        spend,
+        ROW_NUMBER() OVER (PARTITION BY customer ORDER BY transaction_id) row_num
 FROM test) tmp1
 WHERE row_num = 1 OR row_num = 2
 OR (customer, transaction_id) IN 
@@ -27,17 +31,21 @@ GROUP BY customer);
 
 
 #3. Show the first, second and last transaction for every customer for every year
-SELECT customer, transaction_id, month, year, spend,
-       (CASE WHEN row_num = 1 THEN 'first'
-			WHEN row_num = 2 THEN 'second'
-            ELSE 'last' END) AS `order`
-FROM
-(SELECT customer, 
+SELECT customer, 
        transaction_id, 
-	   month, 
+       month, 
        year, 
        spend,
-       ROW_NUMBER() OVER (PARTITION BY customer, year ORDER BY transaction_id) row_num
+       (CASE WHEN row_num = 1 THEN 'first'
+			 WHEN row_num = 2 THEN 'second'
+             ELSE 'last' END) AS `order`
+FROM
+(SELECT customer, 
+        transaction_id, 
+	    month, 
+        year, 
+		spend,
+        ROW_NUMBER() OVER (PARTITION BY customer, year ORDER BY transaction_id) row_num
 FROM test) tmp1
 WHERE row_num = 1 OR row_num = 2
 OR (customer, transaction_id) IN 
@@ -46,16 +54,18 @@ FROM test
 GROUP BY customer, year);
 
 #4. What months do customers make their first transaction. How many make 1st transaction in Jan., how many in Feb. etc.
-SELECT tmp3.month, IFNULL(tmp2.num,0)
+SELECT tmp3.month, 
+       IFNULL(tmp2.num,0)
 FROM
-(SELECT month, COUNT(*) AS num
+(SELECT month, 
+        COUNT(*) AS num
 FROM 
 (SELECT customer, 
-       transaction_id, 
-	   month, 
-       year, 
-       spend,
-       ROW_NUMBER() OVER (PARTITION BY customer ORDER BY transaction_id) row_num
+        transaction_id, 
+	    month, 
+        year, 
+        spend,
+        ROW_NUMBER() OVER (PARTITION BY customer ORDER BY transaction_id) row_num
 FROM test) tmp1
 WHERE row_num = 1
 GROUP BY month
@@ -68,45 +78,36 @@ ON tmp2.month = tmp3.month
 ORDER BY tmp3.month;
 
 #5. What is average time between first and second transaction month for a customer
-SELECT AVG(month_diff)
+SELECT AVG(PERIOD_DIFF(DATE_FORMAT(tmp6.date, '%Y%m'), DATE_FORMAT(tmp3.date, '%Y%m'))) AS avg_diff
 FROM
-(SELECT tmp3.customer, PERIOD_DIFF(DATE_FORMAT(tmp6.date, '%Y%m'), DATE_FORMAT(tmp3.date, '%Y%m')) AS month_diff
-FROM
-(SELECT customer, transaction_id, date, spend, row_num
+(SELECT customer, transaction_id, date, spend AS first
 FROM
 (SELECT customer, transaction_id, date, spend,
-       ROW_NUMBER() OVER (PARTITION BY customer ORDER BY transaction_id) row_num
+        ROW_NUMBER() OVER (PARTITION BY customer ORDER BY transaction_id) row_num
 FROM
 (SELECT customer, 
-       STR_TO_DATE(CONCAT(year,'-', month), '%Y-%m') AS date, 
-       spend, 
-       transaction_id
+		STR_TO_DATE(CONCAT(year,'-', month), '%Y-%m') AS date, 
+		spend, 
+        transaction_id
 FROM test) tmp1
-) tmp2
-WHERE row_num = 1 OR row_num = 2
-) tmp3
-JOIN
-(SELECT customer, transaction_id, date, spend, row_num
+)tmp2
+WHERE row_num = 1
+)tmp3
+JOIN 
+(SELECT customer, transaction_id, date, spend AS second
 FROM
 (SELECT customer, transaction_id, date, spend,
-       ROW_NUMBER() OVER (PARTITION BY customer ORDER BY transaction_id) row_num
+        ROW_NUMBER() OVER (PARTITION BY customer ORDER BY transaction_id) row_num
 FROM
 (SELECT customer, 
-       STR_TO_DATE(CONCAT(year,'-', month), '%Y-%m') AS date, 
-       spend, 
-       transaction_id
+		STR_TO_DATE(CONCAT(year,'-', month), '%Y-%m') AS date, 
+		spend, 
+        transaction_id
 FROM test) tmp4
-) tmp5
-WHERE row_num = 1 OR row_num = 2
-) tmp6
-WHERE tmp3.row_num+1 = tmp6.row_num
-AND tmp3.customer = tmp6.customer
-) tmp7;
-
-
-select * from (select customer, month, rank() over(partition by customer order by month) as o2c
-from test) as temp;
-select * from test order by customer asc, month asc;
+)tmp5
+WHERE row_num = 2
+)tmp6
+ON tmp3.customer = tmp6.customer;
 
 #6. What % of customers have YoY increase in spend
 SELECT CONCAT(COUNT(CASE WHEN (IFNULL(tmp2.year_spend,0)-IFNULL(tmp1.year_spend,0))>0 THEN 1 ELSE 0 END)/COUNT(*)*100,'%') AS percentage
